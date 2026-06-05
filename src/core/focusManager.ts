@@ -1,6 +1,9 @@
 import { createSignal, getOwner, onCleanup, runWithOwner } from 'solid-js';
 import { Config, isDev } from './config.js';
-import { IRendererNode } from './dom-renderer/domRendererTypes.js';
+import {
+  IRendererNode,
+  IRendererNodeProps,
+} from './dom-renderer/domRendererTypes.js';
 export type * from './focusKeyTypes.js';
 import { ElementNode } from './elementNode.js';
 import type {
@@ -13,6 +16,8 @@ import {
   activeElement,
   setActiveElement as setActiveElementSignal,
 } from './activeElement.js';
+import { renderer } from './lightningInit.js';
+import type { INodeProps } from '@solidtv/renderer';
 
 let _signalWrapper: (cb: () => void) => void = (cb) => cb();
 
@@ -53,49 +58,43 @@ const flattenKeyMap = (
   return newTargetMap;
 };
 
-let needFocusDebugStyles = true;
 const addFocusDebug = (
   prevFocusPath: ElementNode[],
   newFocusPath: ElementNode[],
 ) => {
-  if (needFocusDebugStyles) {
-    const style = document.createElement('style');
-    style.type = 'text/css';
-    style.innerHTML = `
-      [data-focus="3"] {
-        border: 2px solid rgba(255, 33, 33, 0.2);
-        border-radius: 5px;
-        transition: border-color 0.3s ease;
-      }
-
-      [data-focus="2"] {
-        border: 2px solid rgba(255, 33, 33, 0.4);
-        border-radius: 5px;
-        transition: border-color 0.3s ease;
-      }
-
-      [data-focus="1"] {
-        border: 4px solid rgba(255, 33, 33, 0.9);
-        border-radius: 5px;
-        transition: border-color 0.5s ease;
-      }
-    `;
-    document.head.appendChild(style);
-    needFocusDebugStyles = false;
-  }
-
   prevFocusPath.forEach((elm) => {
     elm.data = {
       ...elm.data,
       focus: undefined,
     };
+
+    if (elm.focusRingNode) {
+      (elm.focusRingNode as IRendererNode).parent = null;
+    }
   });
 
   newFocusPath.forEach((elm, i) => {
-    elm.data = {
-      ...elm.data,
-      focus: i + 1,
-    };
+    const intensity = ((256 - i * 32 - 1) % (256 + 1)).toString(16);
+
+    const shader = renderer.createShader('roundedWithBorder', {
+      'border-w': 6,
+      'border-color': `0xfff0000${intensity}`,
+    });
+
+    const node = renderer.createNode({
+      ...(elm.props as Partial<INodeProps<any>> & Partial<IRendererNodeProps>),
+      w: elm.width,
+      h: elm.height,
+      x: elm.x,
+      y: elm.y,
+      color: 0xff0000,
+      zIndex: 1000,
+      shader: shader,
+    });
+
+    node.parent = elm.lng.parent as any;
+
+    elm.focusRingNode = node;
   });
 };
 
